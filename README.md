@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="assets/Naturaememoria-ezgif.com-optimize.gif"
+  <img src="assets/Naturaememoria-2-ezgif.com-optimize.gif"
        alt="ForgetMeNot-NCA">
 </p>
 
