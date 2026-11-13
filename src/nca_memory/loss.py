@@ -1,7 +1,7 @@
 import torch.nn.functional as F
 
 
-def ce_dice_loss(logits, target, smooth = 1e-5):
+def ce_dice_loss(logits, target, smooth=1e-5):
     """
     Computes the combined Cross-Entropy minus the Dice loss
 
