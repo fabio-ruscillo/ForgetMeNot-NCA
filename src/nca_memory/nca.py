@@ -115,7 +115,14 @@ class CellularMemory(nn.Module):
             ) < self.update_probability
             delta = delta * update_mask
 
-        return state + delta
+        updated_state = state + delta
+
+        # Keep the same feedback available to neighboring cells at every step.
+        depth, height, width = state.shape[2:]
+        z, y, x = depth // 2, height // 2, width // 2
+        updated_state[:, :, z, y, x] = state[:, :, z, y, x]
+
+        return updated_state
 
 
     def evolve(self, state, steps, generator):
