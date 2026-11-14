@@ -197,3 +197,24 @@ def test_stochastic_update_masks_whole_cells():
     # keep their original state. This must hold for both channels.
     expected = torch.where(selected, full_update, state)
     torch.testing.assert_close(actual, expected)
+
+
+def test_evolve_matches_two_consecutive_updates():
+    """Check that each step uses the state produced by the previous one."""
+    # Reproduce the weights and input without affecting other tests.
+    with torch.random.fork_rng(devices=[]):
+        torch.default_generator.manual_seed(0)
+        memory = CellularMemory(channels=2, update_probability=0.5)
+        state = torch.randn(1, 2, 3, 3, 3)
+
+    # Start both runs from the same seed so they draw the same masks.
+    generator = torch.Generator(device=state.device).manual_seed(0)
+    reference_generator = torch.Generator(device=state.device).manual_seed(0)
+
+    actual = memory.evolve(state, steps=2, generator=generator)
+
+    # Use the first result as input so the second step builds on it.
+    first_step = memory(state, generator=reference_generator)
+    expected = memory(first_step, generator=reference_generator)
+
+    torch.testing.assert_close(actual, expected)

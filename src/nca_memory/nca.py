@@ -116,3 +116,22 @@ class CellularMemory(nn.Module):
             delta = delta * update_mask
 
         return state + delta
+
+
+    def evolve(self, state, steps, generator):
+        """Evolve the memory for the specified number of steps.
+
+        Args:
+            state (torch.Tensor): Initial memory of shape (B, C, D, H, W).
+            steps (int): Number of cellular memory updates.
+            generator (torch.Generator): Seeded generator for the stochastic masks.
+
+        Returns:
+            torch.Tensor: Memory after the last update.
+        """
+        for _ in range(steps):
+            # Feed each updated state into the next step so signals can
+            # travel across the cube through successive local updates.
+            state = self(state, generator=generator)
+
+        return state
