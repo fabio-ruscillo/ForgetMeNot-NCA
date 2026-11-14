@@ -142,3 +142,23 @@ class CellularMemory(nn.Module):
             state = self(state, generator=generator)
 
         return state
+
+
+def write_center(state, feedback):
+    """Write Mamba feedback to the center of each cube read by LocalPerception.
+
+    Args:
+        state (torch.Tensor): Memory of shape (B, C, D, H, W).
+        feedback (torch.Tensor): Feedback vectors of shape (B, C).
+
+    Returns:
+        torch.Tensor: Memory with the feedback written at the center.
+    """
+    # Using integer division to find the center cell of each cube.
+    depth, height, width = state.shape[2:]
+    z, y, x = depth // 2, height // 2, width // 2
+
+    # Keeps the memory before the feedback, for backpropagation.
+    state_with_feedback = state.clone()
+    state_with_feedback[:, :, z, y, x] = feedback
+    return state_with_feedback

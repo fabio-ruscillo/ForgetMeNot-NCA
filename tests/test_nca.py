@@ -1,6 +1,6 @@
 import pytest
 import torch
-from nca_memory.nca import LocalPerception, CellularMemory
+from nca_memory.nca import LocalPerception, CellularMemory, write_center
 
 
 @pytest.mark.parametrize("channels", [1, 16, 40])
@@ -180,7 +180,7 @@ def test_stochastic_update_masks_whole_cells():
         memory = CellularMemory(channels=2)
         state = torch.randn(1, 2, cube_size, cube_size, cube_size)
 
-    # With the default probability of 1.0, we see what every cell
+    # With the default probability of 1.0, is able to see how every cell
     # would look like if it updated.
     generator = torch.Generator().manual_seed(mask_seed)
     full_update = memory(state, generator=generator)
@@ -218,3 +218,19 @@ def test_evolve_matches_two_consecutive_updates():
     expected = memory(first_step, generator=reference_generator)
 
     torch.testing.assert_close(actual, expected)
+
+
+def test_write_center_writes_feedback_to_a_copy():
+    """Check that feedback is written while the input memory stays intact."""
+    state = torch.ones(1, 2, 3, 3, 3)
+    feedback = torch.zeros(1, 2)
+    original = state.clone()
+
+    # Keep the state before the feedback intact for backpropagation.
+    updated_state = write_center(state, feedback)
+
+    torch.testing.assert_close(
+        updated_state[:, :, 1, 1, 1], feedback, rtol=0, atol=0
+    )
+    # The earlier prediction may still need the original state for backward.
+    torch.testing.assert_close(state, original, rtol=0, atol=0)
