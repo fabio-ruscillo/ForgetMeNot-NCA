@@ -1,6 +1,6 @@
 import pytest
 import torch
-from nca_memory.nca import LocalPerception
+from nca_memory.nca import LocalPerception, CellularMemory
 
 
 @pytest.mark.parametrize("channels", [1, 16, 40])
@@ -132,3 +132,36 @@ def test_batched_forward_matches_separate_forwards():
 
     # Check that the results are the same, no matter the type of operations.
     torch.testing.assert_close(batched, separate, rtol=1e-5, atol=1e-6)
+
+
+def test_cellular_memory_update_rule_receives_gradients():
+    """Check that both layers receive finite, nonzero gradients."""
+    batch_size = 2
+    channels = 2
+    cube_size = 5
+
+    # Save and restore the CPU random state so this test does not change
+    # the random sequence used by other tests. This test uses only the CPU.
+    with torch.random.fork_rng(devices=[]):
+        # Fix the CPU seed before creating both the model and the input.
+        # This reproduces the initial weights as well as the two cubes.
+        torch.default_generator.manual_seed(0)
+        memory = CellularMemory(channels=channels)
+        state = torch.randn(
+            batch_size, channels, cube_size, cube_size, cube_size
+        )
+
+    # Use a scalar function of the updated state to check the gradient path
+    # through one memory update before integrating the predictor.
+    test_objective = memory(state).square().mean()
+    gradients = torch.autograd.grad(
+        test_objective, memory.update_rule.parameters()
+    )
+
+    for gradient in gradients:
+        # A NaN or infinity could corrupt the corresponding weight update.
+        assert torch.isfinite(gradient).all()
+
+        # Each layer must get a signal on at least one weight. Individual
+        # weights can have zero gradient, for example when ReLU is inactive.
+        assert torch.count_nonzero(gradient) > 0

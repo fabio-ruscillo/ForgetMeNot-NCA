@@ -69,3 +69,30 @@ class LocalPerception(nn.Module):
             groups=self.channels
         )
         return torch.cat((state, responses), dim=1)
+
+
+class CellularMemory(nn.Module):
+    """Apply one synchronous update to the cellular memory.
+
+    A shared MLP, maps each cell's state and four filter responses per
+    channel to C increments (5 * C → 5 * C → C, ReLU).
+
+    Args:
+        channels (int): Number of state channels per cell (C). 
+    """
+
+    def __init__(self, channels=16):
+        super().__init__()
+        self.perception = LocalPerception(channels=channels)
+        self.update_rule = nn.Sequential(
+            nn.Linear(5 * channels, 5 * channels, bias=False),
+            nn.ReLU(),
+            nn.Linear(5 * channels, channels, bias=False),
+        )
+
+    def forward(self, state):
+        """Update a batched state of shape (B, C, D, H, W)."""
+        # Each cell's features last, so Linear acts on each cell separately.
+        features = self.perception(state).movedim(1, -1)
+        delta = self.update_rule(features).movedim(-1, 1)
+        return state + delta
