@@ -151,9 +151,11 @@ def test_cellular_memory_update_rule_receives_gradients():
             batch_size, channels, cube_size, cube_size, cube_size
         )
 
+    generator = torch.Generator(device=state.device).manual_seed(0)
+
     # Use a scalar function of the updated state to check the gradient path
     # through one memory update before integrating the predictor.
-    test_objective = memory(state).square().mean()
+    test_objective = memory(state, generator=generator).square().mean()
     gradients = torch.autograd.grad(
         test_objective, memory.update_rule.parameters()
     )
@@ -165,3 +167,33 @@ def test_cellular_memory_update_rule_receives_gradients():
         # Each layer must get a signal on at least one weight. Individual
         # weights can have zero gradient, for example when ReLU is inactive.
         assert torch.count_nonzero(gradient) > 0
+
+
+def test_stochastic_update_masks_whole_cells():
+    """Check that each cell updates all its channels or keeps its state."""
+    cube_size = 3
+    mask_seed = 0
+
+    # Use the same weights and input every time this test runs.
+    with torch.random.fork_rng(devices=[]):
+        torch.default_generator.manual_seed(0)
+        memory = CellularMemory(channels=2)
+        state = torch.randn(1, 2, cube_size, cube_size, cube_size)
+
+    # With the default probability of 1.0, we see what every cell
+    # would look like if it updated.
+    generator = torch.Generator().manual_seed(mask_seed)
+    full_update = memory(state, generator=generator)
+
+    # Run the stochastic update with the same weights and input.
+    memory.update_probability = 0.5
+    actual = memory(state, generator=generator)
+
+    # Reset the seed to get the same random numbers as the forward pass.
+    generator.manual_seed(mask_seed)
+    selected = torch.rand(state[:, :1].shape, generator=generator) < 0.5
+
+    # Selected cells should match the full update. Skipped cells should
+    # keep their original state. This must hold for both channels.
+    expected = torch.where(selected, full_update, state)
+    torch.testing.assert_close(actual, expected)

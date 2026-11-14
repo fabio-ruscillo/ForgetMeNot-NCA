@@ -78,11 +78,13 @@ class CellularMemory(nn.Module):
     channel to C increments (5 * C → 5 * C → C, ReLU).
 
     Args:
-        channels (int): Number of state channels per cell (C). 
+        channels (int): Number of state channels per cell (C).
+        update_probability (float): Probability of updating each cell [0.0, 1.1].
     """
 
-    def __init__(self, channels=16):
+    def __init__(self, channels=16, update_probability=1.0):
         super().__init__()
+        self.update_probability = update_probability
         self.perception = LocalPerception(channels=channels)
         self.update_rule = nn.Sequential(
             nn.Linear(5 * channels, 5 * channels, bias=False),
@@ -90,9 +92,27 @@ class CellularMemory(nn.Module):
             nn.Linear(5 * channels, channels, bias=False),
         )
 
-    def forward(self, state):
-        """Update a batched state of shape (B, C, D, H, W)."""
+    def forward(self, state, generator):
+        """
+        Args:
+            state (torch.Tensor): Current memory state.
+            generator (torch.Generator): Seeded generator on the same
+            device as state. For reproducible masks, it has to be reused for each step.
+
+        Returns:
+            torch.Tensor: Updated memory.
+        """
         # Each cell's features last, so Linear acts on each cell separately.
         features = self.perception(state).movedim(1, -1)
         delta = self.update_rule(features).movedim(-1, 1)
+
+        # Use a stochastic mask to choose which cells update at this step.
+        if self.update_probability < 1.0:
+            # Pick once per cell so all its channels update together.
+            mask_shape = (state.shape[0], 1, *state.shape[2:])
+            update_mask = torch.rand(
+                mask_shape, device=state.device, generator=generator
+            ) < self.update_probability
+            delta = delta * update_mask
+
         return state + delta
